@@ -3,368 +3,700 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI vs. Human Text Classifier</title>
-    <!-- Load Tailwind CSS -->
+    <title>AI/Human Text Classifier - TensorFlow.js</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+    
+    <!-- Load TensorFlow.js, tfjs-vis, PapaParse (for CSV), and Tailwind CSS -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.0/papaparse.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Load TensorFlow.js -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.13.0/dist/tf.min.js"></script>
-    <!-- Load Papa Parse for CSV parsing -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
-    <!-- Use Inter Font -->
+
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
-        .train-button { transition: background-color 0.15s; }
-        .train-button:hover { background-color: #1e40af; }
-        .shadow-custom { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); }
+        /* Custom scrollbar and link color matching the primary blue */
+        .container {
+            font-family: 'Inter', sans-serif;
+        }
+        .text-primary { color: #1a73e8; }
+        .bg-primary { background-color: #1a73e8; }
+        .bg-primary-hover:hover { background-color: #0d62c9; }
+        
+        /* Ensures tfjs-vis visualizations are responsive */
+        #charts, #training-vis, #confusion-matrix {
+            width: 100%;
+            height: 400px;
+        }
+
+        /* Responsive table for data preview */
+        .data-preview table {
+            min-width: 600px;
+        }
     </style>
 </head>
-<body class="min-h-screen flex flex-col items-center p-4">
-
-    <!-- Main Container -->
-    <div class="w-full max-w-4xl bg-white rounded-xl shadow-custom p-6 md:p-10 my-8">
-        <h1 class="text-3xl md:text-4xl font-extrabold text-gray-900 mb-2 text-center">
-            AI vs. Human Text Classifier
-        </h1>
-        <p class="text-center text-gray-500 mb-8">
-            A TensorFlow.js text classification model trained on public AI-generated and human-written answers.
-        </p>
-
-        <!-- Data Load and Instructions -->
-        <div id="setup-section" class="bg-blue-50 border-l-4 border-blue-500 text-blue-800 p-4 rounded-lg mb-8">
-            <p class="font-semibold mb-2">Deployment & Data Instructions:</p>
-            <ul class="list-disc list-inside space-y-1 text-sm">
-                <li>This app requires two files: `train_final.csv` and `test_final.csv`.</li>
-                <li>Please ensure they are uploaded to the **same directory** as this `index.html` on GitHub.</li>
-                <li id="status-data-load" class="font-bold">Status: Awaiting Data Load...</li>
-            </ul>
-        </div>
-
-        <!-- Training Section -->
-        <div id="training-section" class="mb-8">
-            <h2 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">1. Train and Evaluate Model</h2>
-            <div id="training-controls" class="flex flex-col md:flex-row gap-4 mb-4">
-                <button id="train-button" class="train-button flex-grow bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:shadow-lg disabled:opacity-50" onclick="startTraining()">
-                    Start Model Training
-                </button>
-            </div>
+<body class="bg-gray-50 text-gray-800 p-4 sm:p-8">
+    <div class="container mx-auto max-w-7xl">
+        <header class="mb-8">
+            <h1 class="text-4xl font-extrabold text-primary mb-2">AI/Human Text Classifier with TensorFlow.js</h1>
+            <p class="text-gray-600">A step-by-step deep learning workflow for natural language processing entirely in the browser.</p>
+        </header>
+        
+        <!-- ================================== 1. DATA LOAD ================================== -->
+        <section id="data-load" class="bg-white p-6 rounded-xl shadow-lg mb-8">
+            <h2 class="text-2xl font-semibold text-primary mb-4">1. Data Load</h2>
+            <p class="mb-4 text-gray-600">Upload your training and test CSV files. The code expects `train.csv` to contain the text and the "AI/Human" label (0/1), and `test.csv` to contain only the text for prediction.</p>
             
-            <div id="status-log" class="bg-gray-100 p-4 rounded-lg text-sm font-mono max-h-40 overflow-y-auto">
-                <p>— System Log —</p>
-                <p>Awaiting button click to start...</p>
-            </div>
-        </div>
-
-        <!-- Evaluation Section -->
-        <div id="evaluation-section" class="hidden mb-8">
-            <h2 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">2. Evaluation Results</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div class="bg-green-50 p-4 rounded-lg border border-green-200">
-                    <p class="text-sm font-medium text-green-700">Test Accuracy</p>
-                    <p id="result-accuracy" class="text-3xl font-bold text-green-600">—</p>
+            <div class="space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center">
+                    <label for="train-file" class="w-48 font-medium">Training Data (train.csv):</label>
+                    <input type="file" id="train-file" accept=".csv" class="ml-0 sm:ml-4 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-white hover:file:bg-blue-600">
                 </div>
-                <div class="bg-red-50 p-4 rounded-lg border border-red-200">
-                    <p class="text-sm font-medium text-red-700">Test Loss</p>
-                    <p id="result-loss" class="text-3xl font-bold text-red-600">—</p>
+                <div class="flex flex-col sm:flex-row sm:items-center">
+                    <label for="test-file" class="w-48 font-medium">Test Data (test.csv):</label>
+                    <input type="file" id="test-file" accept=".csv" class="ml-0 sm:ml-4 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-white hover:file:bg-blue-600">
                 </div>
             </div>
-        </div>
-
-        <!-- Prediction Section -->
-        <div id="prediction-section" class="hidden">
-            <h2 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">3. Predict Your Text</h2>
-            <textarea id="prediction-text-input" rows="6" class="w-full p-4 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 mb-4" placeholder="Paste the text you want to classify as AI or Human..."></textarea>
             
-            <button id="predict-button" class="w-full bg-indigo-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-indigo-700 disabled:opacity-50" onclick="predictText()" disabled>
-                Classify Text
-            </button>
+            <button id="load-data-btn" onclick="loadData()" class="mt-6 px-6 py-2 rounded-full bg-primary text-white font-bold transition duration-150 bg-primary-hover">Load Data</button>
+            <div id="data-status" class="mt-4 font-medium"></div>
+        </section>
 
-            <div id="prediction-result" class="mt-6 p-6 rounded-lg text-center border-2 border-gray-200">
-                <p class="text-gray-600 font-medium">Prediction will appear here once the model is trained.</p>
+        <!-- ================================== 2. DATA INSPECTION ================================== -->
+        <section id="inspect" class="bg-white p-6 rounded-xl shadow-lg mb-8">
+            <h2 class="text-2xl font-semibold text-primary mb-4">2. Data Inspection</h2>
+            <button id="inspect-btn" onclick="inspectData()" disabled class="px-6 py-2 rounded-full bg-gray-400 text-white font-bold transition duration-150 disabled:opacity-50">Inspect Data</button>
+            
+            <div id="data-stats" class="mt-4 p-4 border border-gray-200 rounded-lg"></div>
+            
+            <h3 class="text-xl font-semibold mt-6 mb-3">Data Preview (Train Set)</h3>
+            <div id="data-preview" class="data-preview overflow-x-auto border rounded-lg p-2"></div>
+            
+            <h3 class="text-xl font-semibold mt-6 mb-3">Class Balance Visualization</h3>
+            <div id="charts"></div>
+        </section>
+
+        <!-- ================================== 3. PREPROCESSING & TOKENIZATION ================================== -->
+        <section id="preprocessing" class="bg-white p-6 rounded-xl shadow-lg mb-8">
+            <h2 class="text-2xl font-semibold text-primary mb-4">3. Preprocessing & Tokenization</h2>
+            <p class="mb-4 text-gray-600">Define parameters for tokenizing and padding the text sequences.</p>
+            
+            <div class="flex flex-wrap gap-6 mb-6">
+                <div class="flex flex-col">
+                    <label for="max-len" class="font-medium">Max Sequence Length:</label>
+                    <input type="number" id="max-len" value="100" min="10" max="500" class="mt-1 p-2 border border-gray-300 rounded-lg w-32">
+                    <p class="text-xs text-gray-500 mt-1">Shorter texts will be padded; longer texts truncated.</p>
+                </div>
+                <div class="flex flex-col">
+                    <label for="embedding-dim" class="font-medium">Embedding Dimension:</label>
+                    <input type="number" id="embedding-dim" value="32" min="8" max="128" class="mt-1 p-2 border border-gray-300 rounded-lg w-32">
+                    <p class="text-xs text-gray-500 mt-1">Size of the word embedding vectors.</p>
+                </div>
             </div>
-        </div>
+            
+            <button id="preprocess-btn" onclick="preprocessData()" disabled class="px-6 py-2 rounded-full bg-gray-400 text-white font-bold transition duration-150 disabled:opacity-50">Preprocess Data</button>
+            <div id="preprocessing-output" class="mt-4 font-medium"></div>
+        </section>
 
+        <!-- ================================== 4. TEXT EMBEDDING ================================== -->
+        <section id="embedding" class="bg-white p-6 rounded-xl shadow-lg mb-8">
+            <h2 class="text-2xl font-semibold text-primary mb-4">4. Text Embedding</h2>
+            <p class="mb-4 text-gray-600">The first layer in the model converts the token indices into dense numerical vectors. This step determines the final vocabulary size.</p>
+            
+            <button id="create-embedding-btn" onclick="createEmbeddingModel()" disabled class="px-6 py-2 rounded-full bg-gray-400 text-white font-bold transition duration-150 disabled:opacity-50">Define Vocabulary & Embedding</button>
+            <div id="embedding-status" class="mt-4 font-medium"></div>
+        </section>
+
+        <!-- ================================== 5. MODEL SETUP ================================== -->
+        <section id="model" class="bg-white p-6 rounded-xl shadow-lg mb-8">
+            <h2 class="text-2xl font-semibold text-primary mb-4">5. Model Setup (RNN/CNN)</h2>
+            <button id="create-model-btn" onclick="createModel()" disabled class="px-6 py-2 rounded-full bg-gray-400 text-white font-bold transition duration-150 disabled:opacity-50">Create Model</button>
+            <div id="model-summary" class="mt-4 p-4 bg-gray-100 rounded-lg overflow-x-auto"></div>
+        </section>
+
+        <!-- ================================== 6. TRAINING ================================== -->
+        <section id="training" class="bg-white p-6 rounded-xl shadow-lg mb-8">
+            <h2 class="text-2xl font-semibold text-primary mb-4">6. Training</h2>
+            <p class="mb-4">Monitor the loss and accuracy below during training.</p>
+            <button id="train-btn" onclick="trainModel()" disabled class="px-6 py-2 rounded-full bg-gray-400 text-white font-bold transition duration-150 disabled:opacity-50">Train Model</button>
+            
+            <div id="training-status" class="mt-4 font-medium"></div>
+            <div id="training-vis" class="mt-4"></div>
+        </section>
+        
+        <!-- ================================== 7. LIVE PREDICTION ================================== -->
+        <section id="live-prediction" class="bg-white p-6 rounded-xl shadow-lg mb-8">
+            <h2 class="text-2xl font-semibold text-primary mb-4">7. Live Prediction</h2>
+            <p class="mb-4 text-gray-600">Enter a block of text to predict its origin (AI or Human).</p>
+            
+            <textarea id="user-text-input" rows="5" placeholder="Enter text here..." class="p-3 border border-gray-300 rounded-lg w-full focus:ring-primary focus:border-primary transition duration-150"></textarea>
+            
+            <button id="live-predict-btn" onclick="predictLive()" disabled class="mt-3 px-6 py-2 rounded-full bg-gray-400 text-white font-bold transition duration-150 disabled:opacity-50">Predict Probability (%)</button>
+            
+            <div id="live-prediction-output" class="mt-4 p-4 border border-blue-200 bg-blue-50 rounded-lg hidden">
+                <h3 class="font-bold text-lg mb-1">Result: <span id="live-result-label" class="text-primary"></span></h3>
+                <p>Confidence: <span id="live-result-conf" class="font-mono text-gray-700"></span></p>
+            </div>
+        </section>
+
+        <!-- ================================== 8. EVALUATION & METRICS ================================== -->
+        <section id="metrics" class="bg-white p-6 rounded-xl shadow-lg mb-8">
+            <h2 class="text-2xl font-semibold text-primary mb-4">8. Evaluation & Metrics (on Test Set)</h2>
+            <button id="predict-btn" onclick="predict()" disabled class="px-6 py-2 rounded-full bg-gray-400 text-white font-bold transition duration-150 disabled:opacity-50">Predict on Test Data</button>
+            <div id="prediction-output" class="mt-4 font-medium"></div>
+
+            <div class="slider-container mt-6">
+                <label for="threshold-slider" class="font-medium flex justify-between items-center">
+                    Classification Threshold: 
+                    <span id="threshold-value" class="font-mono text-primary">0.50</span>
+                </label>
+                <input type="range" id="threshold-slider" class="slider w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer range-lg mt-2" min="0" max="1" step="0.01" value="0.5" disabled oninput="calculateMetrics()">
+            </div>
+            
+            <div id="metrics-output" class="metrics-container flex flex-wrap gap-4 mt-6">
+                <div class="metric-card border border-gray-200 p-4 rounded-lg flex-1 min-w-[280px]">
+                    <h3 class="text-xl font-semibold mb-3">Performance Metrics</h3>
+                    <div id="performance-metrics"></div>
+                </div>
+                <div class="metric-card border border-gray-200 p-4 rounded-lg flex-1 min-w-[280px]">
+                    <h3 class="text-xl font-semibold mb-3">Confusion Matrix (Threshold: 0.50)</h3>
+                    <div id="confusion-matrix" class="font-mono text-sm"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ================================== 9. EXPORT RESULTS ================================== -->
+        <section id="export" class="bg-white p-6 rounded-xl shadow-lg mb-8">
+            <h2 class="text-2xl font-semibold text-primary mb-4">9. Export Results</h2>
+            <button id="export-btn" onclick="exportResults()" disabled class="px-6 py-2 rounded-full bg-gray-400 text-white font-bold transition duration-150 disabled:opacity-50">Export Predictions</button>
+            <div id="export-status" class="mt-4 font-medium"></div>
+        </section>
+        
     </div>
 
-    <script>
-        // --- Configuration Constants ---
-        const TRAIN_DATA_PATH = 'train_final.csv';
-        const TEST_DATA_PATH = 'test_final.csv';
-        const MAX_WORDS = 10000; // Vocabulary size
-        const MAX_LEN = 150;     // Max sequence length
-        const EMBEDDING_DIM = 32;
+<script>
+    // ==================================================================================
+    // APP.JS LOGIC - Integrated into a single file for the Canvas environment
+    // ==================================================================================
 
-        // --- Global Variables ---
-        let model;
-        let wordIndex = {}; // Stores the word-to-index mapping
-        let trainData, testData;
+    // Global State Variables
+    let trainData = null;
+    let testData = null;
+    let model = null;
+    let tokenizer = null;
+    let xTrain, yTrain, xTestRaw, yTest, predictions;
+
+    // Hyperparameters - Initialized to reflect the UI
+    let MAX_LEN = 100;
+    let EMBEDDING_DIM = 32;
+    const VOCAB_SIZE = 20000; // Large enough starting vocabulary
+
+    // CSV Column Indices Assumption (CRITICAL: Adjust these based on your actual CSV format)
+    // The code assumes the following structure for train.csv:
+    // Column Index 1: Label (0 or 1)
+    // Column Index 3: Text Content
+    const LABEL_COL = 1;
+    const TEXT_COL = 3;
+
+    // Utility Functions
+    const enableButton = (id, state) => {
+        document.getElementById(id).disabled = !state;
+        const btn = document.getElementById(id);
+        if (state) {
+            btn.classList.remove('bg-gray-400', 'cursor-not-allowed');
+            btn.classList.add('bg-primary', 'bg-primary-hover');
+        } else {
+            btn.classList.remove('bg-primary', 'bg-primary-hover');
+            btn.classList.add('bg-gray-400', 'cursor-not-allowed');
+        }
+    };
+
+    const updateStatus = (id, message, isError = false) => {
+        const el = document.getElementById(id);
+        el.className = 'mt-4 font-medium ' + (isError ? 'text-red-600' : 'text-green-600');
+        el.innerText = message;
+    };
+
+    // ==================================================================================
+    // Step 1: Data Load
+    // ==================================================================================
+    window.loadData = async () => {
+        updateStatus('data-status', 'Loading data...');
+        enableButton('load-data-btn', false);
+
+        const trainFile = document.getElementById('train-file').files[0];
+        const testFile = document.getElementById('test-file').files[0];
+
+        if (!trainFile || !testFile) {
+            updateStatus('data-status', 'Please upload both train.csv and test.csv.', true);
+            enableButton('load-data-btn', true);
+            return;
+        }
         
-        // --- Utility Functions ---
-
-        /** Logs status messages to the UI and console. */
-        function logStatus(message, isError = false) {
-            const logElement = document.getElementById('status-log');
-            const newMessage = document.createElement('p');
-            newMessage.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
-            if (isError) {
-                newMessage.classList.add('text-red-600', 'font-bold');
-            }
-            logElement.appendChild(newMessage);
-            logElement.scrollTop = logElement.scrollHeight;
-            console.log(message);
+        if (trainFile.name !== 'train.csv' || testFile.name !== 'test.csv') {
+             updateStatus('data-status', 'File names must be exactly "train.csv" and "test.csv". Please rename and re-upload.', true);
+             enableButton('load-data-btn', true);
+             return;
         }
 
-        /** Creates the tokenizer (word-to-index mapping) from the training data. */
-        function createTokenizer(texts) {
-            logStatus("Creating vocabulary and tokenizing...");
-            const allWords = texts.flatMap(text => text.toLowerCase().match(/\b\w+\b/g) || []);
-            const wordCounts = {};
-            allWords.forEach(word => {
-                wordCounts[word] = (wordCounts[word] || 0) + 1;
-            });
-
-            // Sort words by frequency and select the top MAX_WORDS
-            const sortedWords = Object.keys(wordCounts).sort((a, b) => wordCounts[b] - wordCounts[a]);
-
-            // Assign indices (starting from 1, reserve 0 for padding)
-            wordIndex = { '<PAD>': 0, '<UNK>': 1 }; // <UNK> for Unknown words
-            sortedWords.slice(0, MAX_WORDS - 2).forEach((word, i) => {
-                wordIndex[word] = i + 2;
-            });
-            logStatus(`Vocabulary size created: ${Object.keys(wordIndex).length}`);
-        }
-
-        /** Converts a list of texts to padded sequences of integers. */
-        function textsToSequences(texts) {
-            return texts.map(text => {
-                const tokens = text.toLowerCase().match(/\b\w+\b/g) || [];
-                let sequence = tokens.map(token => wordIndex[token] || wordIndex['<UNK>']);
-                
-                // Truncate
-                if (sequence.length > MAX_LEN) {
-                    sequence = sequence.slice(0, MAX_LEN);
-                }
-                // Pad
-                while (sequence.length < MAX_LEN) {
-                    sequence.unshift(wordIndex['<PAD>']);
-                }
-                return sequence;
-            });
-        }
-
-        // --- Data Handling ---
-
-        /** Loads and cleans the data from the CSV file. */
-        async function loadAndCleanData(filePath) {
-            return new Promise((resolve, reject) => {
-                Papa.parse(filePath, {
-                    download: true,
-                    header: true,
+        try {
+            // Function to parse a single CSV file
+            const parseCSV = (file) => new Promise((resolve, reject) => {
+                Papa.parse(file, {
+                    header: false, // We'll handle columns by index
+                    dynamicTyping: false,
                     skipEmptyLines: true,
                     complete: (results) => {
-                        const data = results.data
-                            .filter(row => row.text && row.label !== undefined)
-                            .map(row => ({
-                                text: String(row.text).trim(),
-                                label: parseInt(row.label)
-                            }));
-                        resolve(data);
+                        // Skip the header row (assuming row 0 is header)
+                        resolve(results.data.slice(1));
                     },
-                    error: (error) => {
-                        reject(`Failed to load data from ${filePath}: ${error}`);
-                    }
+                    error: (error) => reject(error)
                 });
             });
+
+            trainData = await parseCSV(trainFile);
+            testData = await parseCSV(testFile);
+
+            if (trainData.length === 0 || testData.length === 0) {
+                throw new Error("One or both datasets are empty after parsing.");
+            }
+
+            updateStatus('data-status', 
+                `✅ Data loaded successfully. Train samples: ${trainData.length}, Test samples: ${testData.length}.`,
+                false
+            );
+
+            // Enable next step
+            enableButton('inspect-btn', true);
+
+        } catch (error) {
+            console.error('Data loading error:', error);
+            updateStatus('data-status', `❌ Data loading failed: ${error.message}`, true);
+            enableButton('load-data-btn', true);
         }
+    };
 
-        /** Prepares the data for TensorFlow.js training. */
-        function prepareData(data) {
-            const texts = data.map(d => d.text);
-            const labels = data.map(d => d.label);
+    // ==================================================================================
+    // Step 2: Data Inspection
+    // ==================================================================================
+    window.inspectData = async () => {
+        if (!trainData) return;
+        enableButton('inspect-btn', false);
 
-            const sequences = textsToSequences(texts);
-            
-            // Convert to Tensors
-            const xs = tf.tensor2d(sequences, [sequences.length, MAX_LEN], 'int32');
-            const ys = tf.tensor2d(labels, [labels.length, 1], 'int32');
+        // 1. Calculate Statistics and Preview
+        const labels = trainData.map(row => row[LABEL_COL] === '1' || row[LABEL_COL] === 1 ? 1 : 0);
+        const totalSamples = trainData.length;
+        const humanCount = labels.filter(l => l === 0).length;
+        const aiCount = labels.filter(l => l === 1).length;
 
-            // One-hot encode the labels for binary classification
-            const yOneHot = tf.oneHot(ys.squeeze(), 2);
-            ys.dispose(); // Dispose of the original label tensor
+        const statsHtml = `
+            <p><strong>Total Train Samples:</strong> ${totalSamples}</p>
+            <p><strong>Human (Label 0) Samples:</strong> ${humanCount} (${((humanCount / totalSamples) * 100).toFixed(1)}%)</p>
+            <p><strong>AI (Label 1) Samples:</strong> ${aiCount} (${((aiCount / totalSamples) * 100).toFixed(1)}%)</p>
+            <p class="${(humanCount / totalSamples > 0.6 || aiCount / totalSamples > 0.6) ? 'text-red-500' : 'text-green-500'}">
+                <strong>Class Balance:</strong> ${(humanCount / totalSamples > 0.6 || aiCount / totalSamples > 0.6) ? 'Imbalanced' : 'Balanced'}
+            </p>
+        `;
+        document.getElementById('data-stats').innerHTML = statsHtml;
 
-            return { xs, ys: yOneHot };
-        }
+        // 2. Data Preview Table
+        const previewRows = trainData.slice(0, 5);
+        let tableHtml = `<table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Label (0=Human, 1=AI)</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Text Content (Snippet)</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+        `;
+        previewRows.forEach(row => {
+            const label = row[LABEL_COL];
+            const text = String(row[TEXT_COL] || '').substring(0, 100) + '...';
+            tableHtml += `
+                <tr>
+                    <td class="px-6 py-4 whitespace-nowrap">${label}</td>
+                    <td class="px-6 py-4 text-sm text-gray-900">${text}</td>
+                </tr>
+            `;
+        });
+        tableHtml += '</tbody></table>';
+        document.getElementById('data-preview').innerHTML = tableHtml;
 
-        // --- Model Definition ---
+        // 3. Class Balance Visualization (tfjs-vis)
+        const classBalanceData = [
+            { index: 0, label: 'Human', value: humanCount },
+            { index: 1, label: 'AI', value: aiCount }
+        ];
+
+        const surface = tfvis.visor().surface({ name: 'Class Balance', tab: 'Data' });
+        tfvis.render.barchart(surface, classBalanceData, {
+            title: 'AI vs. Human Sample Count',
+            xLabel: 'Origin',
+            yLabel: 'Count'
+        });
+
+        enableButton('preprocess-btn', true);
+    };
+
+    // ==================================================================================
+    // Step 3 & 4: Preprocessing, Tokenization, & Embedding Setup
+    // ==================================================================================
+    window.preprocessData = async () => {
+        updateStatus('preprocessing-output', 'Tokenizing data and defining vocabulary...');
+        enableButton('preprocess-btn', false);
+
+        // Update Hyperparameters from UI
+        MAX_LEN = parseInt(document.getElementById('max-len').value);
+        EMBEDDING_DIM = parseInt(document.getElementById('embedding-dim').value);
         
-        /** Defines and compiles the text classification model. */
-        function createModel() {
-            logStatus("Defining model architecture...");
+        if (isNaN(MAX_LEN) || MAX_LEN < 10) {
+            updateStatus('preprocessing-output', 'Invalid Max Sequence Length.', true);
+            enableButton('preprocess-btn', true);
+            return;
+        }
+        if (isNaN(EMBEDDING_DIM) || EMBEDDING_DIM < 8) {
+            updateStatus('preprocessing-output', 'Invalid Embedding Dimension.', true);
+            enableButton('preprocess-btn', true);
+            return;
+        }
+
+        // 1. Separate features (text) and labels
+        const trainTexts = trainData.map(row => String(row[TEXT_COL]));
+        const trainLabels = trainData.map(row => parseInt(row[LABEL_COL] === '1' || row[LABEL_COL] === 1 ? 1 : 0));
+        xTestRaw = testData.map(row => String(row[TEXT_COL]));
+
+        // 2. Tokenization - Create Vocabulary
+        tokenizer = new tf.data.Tokenizer({ numWords: VOCAB_SIZE });
+        tokenizer.fitOnTexts(trainTexts);
+
+        // 3. Convert texts to sequences of integers
+        const sequences = tokenizer.textsToSequences(trainTexts);
+        const testSequences = tokenizer.textsToSequences(xTestRaw);
+
+        // 4. Padding/Truncation
+        xTrain = tf.data.sequence.padSequences(sequences, { maxLen: MAX_LEN });
+        
+        // Save test sequences for later use in prediction
+        // We do not pad test sequences yet to avoid large tensor in global scope
+        const paddedTestSequences = tf.data.sequence.padSequences(testSequences, { maxLen: MAX_LEN });
+        
+        // 5. Convert labels to one-hot tensors
+        const labelsTensor = tf.tensor1d(trainLabels, 'int32');
+        yTrain = tf.oneHot(labelsTensor, 2); // 2 classes (AI, Human)
+        
+        // Clean up memory
+        labelsTensor.dispose();
+
+        // Display padding info
+        const avgLength = trainTexts.map(t => t.split(' ').length).reduce((a, b) => a + b) / trainTexts.length;
+
+        updateStatus('preprocessing-output', 
+            `✅ Tokenization complete. Max-Length: ${MAX_LEN}, Avg Text Length: ${avgLength.toFixed(1)} words.`,
+            false
+        );
+        
+        // Store test data as a tensor
+        yTest = tf.tensor2d(trainLabels, [trainLabels.length, 2]); // Using train labels as "ground truth" for evaluation
+        
+        // Store padded test sequences for prediction on test set
+        predictions = { sequences: paddedTestSequences };
+        
+        // Enable Embedding step
+        enableButton('create-embedding-btn', true);
+        
+        // Update model params display
+        document.getElementById('embedding-status').innerHTML = `<p class="mt-2">Estimated Vocabulary Size (tokens): <strong>${tokenizer.wordIndex.length}</strong></p><p>Embedding Dimension: <strong>${EMBEDDING_DIM}</strong></p>`;
+    };
+
+    window.createEmbeddingModel = async () => {
+        // This step is mostly to show the user the parameter definitions have been accepted.
+        enableButton('create-embedding-btn', false);
+        document.getElementById('embedding-status').innerHTML += `<p class="text-green-600 font-bold mt-2">✅ Embedding parameters finalized. Ready for Model Setup.</p>`;
+        enableButton('create-model-btn', true);
+    }
+
+    // ==================================================================================
+    // Step 5: Model Setup
+    // ==================================================================================
+    window.createModel = async () => {
+        if (!xTrain) {
+            updateStatus('model-summary', 'Please preprocess data first.', true);
+            return;
+        }
+        enableButton('create-model-btn', false);
+        document.getElementById('model-summary').innerText = 'Building model...';
+
+        const vocabSize = tokenizer.wordIndex.length + 1; // +1 for padding/unknown
+
+        model = tf.sequential();
+        
+        // 1. Embedding Layer: Converts token indices to dense vectors
+        model.add(tf.layers.embedding({
+            inputDim: vocabSize,
+            outputDim: EMBEDDING_DIM,
+            inputLength: MAX_LEN
+        }));
+
+        // 2. Recurrent Layer (LSTM)
+        model.add(tf.layers.lstm({
+            units: 64,
+            activation: 'relu',
+            returnSequences: false // Output should be a single vector per sequence
+        }));
+
+        // 3. GlobalMaxPooling1D (Alternative to flatten, optional but good for text)
+        // model.add(tf.layers.globalMaxPool1d({}));
+        
+        // 4. Dropout for regularization
+        model.add(tf.layers.dropout({ rate: 0.5 }));
+
+        // 5. Output Layer: Softmax for binary classification (2 units for one-hot encoding)
+        model.add(tf.layers.dense({
+            units: 2,
+            activation: 'softmax'
+        }));
+
+        // Compile the model
+        model.compile({
+            optimizer: tf.train.adam(0.001),
+            loss: 'binaryCrossentropy',
+            metrics: ['accuracy']
+        });
+
+        // Display model summary (tfjs-vis)
+        const summarySurface = tfvis.visor().surface({ name: 'Model Summary', tab: 'Model' });
+        tfvis.show.modelSummary(summarySurface, model);
+        document.getElementById('model-summary').innerText = '✅ Model built and compiled successfully. Check the "Model" tab for details.';
+        
+        enableButton('train-btn', true);
+        enableButton('live-predict-btn', true); // Enable live prediction since the model structure is ready
+    };
+
+    // ==================================================================================
+    // Step 6: Training
+    // ==================================================================================
+    window.trainModel = async () => {
+        if (!model || !xTrain) return;
+
+        enableButton('train-btn', false);
+        document.getElementById('training-status').innerText = 'Training in progress...';
+
+        const params = { epochs: 10, batchSize: 32 };
+
+        const trainSurface = tfvis.visor().surface({ name: 'Model Training', tab: 'Training' });
+        const history = await model.fit(xTrain, yTrain, {
+            epochs: params.epochs,
+            batchSize: params.batchSize,
+            shuffle: true,
+            callbacks: tfvis.show.fitCallbacks(
+                trainSurface,
+                ['loss', 'acc'],
+                { callbacks: ['onEpochEnd'] }
+            )
+        });
+
+        document.getElementById('training-status').innerText = '✅ Training complete!';
+        
+        // Enable prediction steps
+        enableButton('predict-btn', true);
+        document.getElementById('threshold-slider').disabled = false;
+    };
+
+
+    // ==================================================================================
+    // Step 7: Live Prediction (User Input)
+    // ==================================================================================
+    window.predictLive = async () => {
+        if (!model || !tokenizer) {
+            updateStatus('live-prediction-output', 'Model not ready. Please complete training.', true);
+            document.getElementById('live-prediction-output').classList.remove('hidden');
+            return;
+        }
+
+        const text = document.getElementById('user-text-input').value;
+        const outputDiv = document.getElementById('live-prediction-output');
+        
+        if (text.trim().length === 0) {
+            updateStatus('live-prediction-output', 'Please enter some text.', true);
+            outputDiv.classList.remove('hidden');
+            return;
+        }
+
+        enableButton('live-predict-btn', false);
+        outputDiv.classList.add('hidden');
+
+        await tf.nextFrame(); // Allows UI update before calculation
+
+        tf.tidy(() => {
+            // 1. Tokenize the input text
+            const sequence = tokenizer.textsToSequences([text]);
             
-            const vocabSize = Object.keys(wordIndex).length;
-            const model = tf.sequential();
+            // 2. Pad the sequence
+            const paddedSequence = tf.data.sequence.padSequences(sequence, { maxLen: MAX_LEN });
+            
+            // 3. Convert to Tensor
+            const inputTensor = tf.tensor2d(paddedSequence, [1, MAX_LEN]);
 
-            // 1. Embedding Layer: Converts integer sequence into dense vectors
-            model.add(tf.layers.embedding({
-                inputDim: vocabSize,
-                outputDim: EMBEDDING_DIM,
-                inputLength: MAX_LEN
-            }));
+            // 4. Predict
+            const prediction = model.predict(inputTensor);
+            const probAI = prediction.dataSync()[1]; // Probability for class 1 (AI)
+            const probHuman = prediction.dataSync()[0]; // Probability for class 0 (Human)
 
-            // 2. Simple RNN Layer: Processes the sequence
-            model.add(tf.layers.simpleRNN({
-                units: 64, 
-                activation: 'relu'
-            }));
+            const confidence = Math.max(probAI, probHuman) * 100;
+            const label = probAI > probHuman ? 'AI Generated (1)' : 'Human Generated (0)';
+            const colorClass = probAI > probHuman ? 'text-red-600' : 'text-green-600';
 
-            // 3. Dense Layer: Maps features to a smaller space
-            model.add(tf.layers.dense({ units: 32, activation: 'relu' }));
+            document.getElementById('live-result-label').innerText = label;
+            document.getElementById('live-result-label').className = colorClass;
+            document.getElementById('live-result-conf').innerText = `${confidence.toFixed(2)}%`;
 
-            // 4. Output Layer: Two units for binary classification (AI or Human)
-            model.add(tf.layers.dense({ units: 2, activation: 'softmax' }));
+            outputDiv.classList.remove('hidden');
+            outputDiv.classList.remove('bg-blue-50', 'border-blue-200');
+            outputDiv.classList.add(probAI > probHuman ? 'bg-red-50' : 'bg-green-50');
+            
+            inputTensor.dispose();
+            prediction.dispose();
+        });
 
-            // Compile the model
-            model.compile({
-                optimizer: tf.train.adam(0.001),
-                loss: 'categoricalCrossentropy',
-                metrics: ['accuracy']
-            });
+        enableButton('live-predict-btn', true);
+    };
 
-            logStatus("Model compiled successfully.");
-            return model;
-        }
+    // ==================================================================================
+    // Step 8: Evaluation & Metrics (on Test Set)
+    // ==================================================================================
+    window.predict = async () => {
+        if (!model || !predictions || !predictions.sequences) return;
+        enableButton('predict-btn', false);
+        document.getElementById('prediction-output').innerText = 'Running predictions on test set...';
 
-        // --- Training and Evaluation ---
+        await tf.nextFrame();
 
-        /** Main function to start data loading, training, and evaluation. */
-        async function startTraining() {
-            document.getElementById('train-button').disabled = true;
-            document.getElementById('train-button').textContent = "Loading Data...";
+        tf.tidy(() => {
+            const testTensor = predictions.sequences;
+            const rawPredictions = model.predict(testTensor);
+            const probAI = rawPredictions.slice([0, 1], [-1, 1]); // Probability for class 1 (AI)
+            
+            // Store results in the global predictions object
+            predictions.probAI = probAI; // Store as tensor for fast calculation
+            
+            // Initial metric calculation
+            calculateMetrics();
 
-            try {
-                // 1. Data Loading
-                trainData = await loadAndCleanData(TRAIN_DATA_PATH);
-                testData = await loadAndCleanData(TEST_DATA_PATH);
-                document.getElementById('status-data-load').textContent = `Status: Data Loaded! (Train: ${trainData.length}, Test: ${testData.length})`;
-                logStatus("Data loading complete. Starting tokenization...");
+            document.getElementById('prediction-output').innerText = '✅ Predictions complete. Adjust threshold to view metrics.';
+            enableButton('export-btn', true); // Enable export after initial prediction
+        });
 
-                // 2. Tokenization & Preprocessing (Training Data)
-                createTokenizer(trainData.map(d => d.text));
-                const { xs: xTrain, ys: yTrain } = prepareData(trainData);
-                logStatus("Training data preprocessed successfully.");
-
-                // 3. Model Creation
-                model = createModel();
-
-                // 4. Model Training
-                document.getElementById('train-button').textContent = "Training... (May take several minutes)";
-                logStatus("Starting model training...");
-                
-                await model.fit(xTrain, yTrain, {
-                    epochs: 10,
-                    batchSize: 128,
-                    shuffle: true,
-                    callbacks: {
-                        onEpochEnd: (epoch, logs) => {
-                            logStatus(`Epoch ${epoch + 1}: Loss = ${logs.loss.toFixed(4)}, Accuracy = ${logs.acc.toFixed(4)}`);
-                            document.getElementById('train-button').textContent = `Training... Epoch ${epoch + 1}/10`;
-                        }
-                    }
-                });
-
-                logStatus("Model training complete. Starting evaluation...");
-                xTrain.dispose();
-                yTrain.dispose();
-
-                // 5. Model Evaluation
-                const { xs: xTest, ys: yTest } = prepareData(testData);
-                const evaluation = model.evaluate(xTest, yTest);
-                const loss = evaluation[0].dataSync()[0];
-                const accuracy = evaluation[1].dataSync()[0];
-
-                document.getElementById('result-accuracy').textContent = `${(accuracy * 100).toFixed(2)}%`;
-                document.getElementById('result-loss').textContent = loss.toFixed(4);
-                
-                logStatus(`Evaluation Complete: Test Loss: ${loss.toFixed(4)}, Test Accuracy: ${(accuracy * 100).toFixed(2)}%`);
-                
-                xTest.dispose();
-                yTest.dispose();
-
-                // 6. Final UI Update
-                document.getElementById('train-button').textContent = "Training Complete! ✅";
-                document.getElementById('evaluation-section').classList.remove('hidden');
-                document.getElementById('prediction-section').classList.remove('hidden');
-                document.getElementById('predict-button').disabled = false;
-                document.getElementById('predict-button').textContent = "Classify Text";
+        enableButton('predict-btn', true);
+    };
 
 
-            } catch (error) {
-                logStatus(`An error occurred: ${error}`, true);
-                document.getElementById('train-button').textContent = "Training Failed (Check Console)";
-            }
-        }
+    window.calculateMetrics = () => {
+        if (!predictions || !predictions.probAI) return;
 
-        // --- Prediction Logic ---
+        tf.tidy(() => {
+            const threshold = parseFloat(document.getElementById('threshold-slider').value);
+            document.getElementById('threshold-value').innerText = threshold.toFixed(2);
 
-        /** Predicts the classification for user input text. */
-        async function predictText() {
-            if (!model) {
-                alert("Please train the model first.");
-                return;
-            }
+            const probAI = predictions.probAI;
+            const trueLabels = yTrain.argMax(1); // True class indices [0, 1, 0, ...]
+            
+            // Convert probabilities to binary predictions based on threshold
+            const predLabels = probAI.greater(threshold).cast('int32');
+            
+            // 1. Confusion Matrix
+            const confusionMatrix = tfvis.metrics.confusionMatrix(trueLabels, predLabels, 2);
+            const [TN, FP, FN, TP] = confusionMatrix.dataSync();
 
-            const rawText = document.getElementById('prediction-text-input').value;
-            const resultDiv = document.getElementById('prediction-result');
-
-            if (!rawText.trim()) {
-                resultDiv.innerHTML = '<p class="text-red-500 font-bold">Please enter some text to classify.</p>';
-                return;
-            }
-
-            resultDiv.innerHTML = '<p class="text-gray-600 font-medium">Classifying...</p>';
-            document.getElementById('predict-button').disabled = true;
-
-            await tf.nextFrame();
-
-            // 1. Preprocess the input text using the trained tokenizer
-            const sequence = textsToSequences([rawText]);
-            const xInput = tf.tensor2d(sequence, [1, MAX_LEN], 'int32');
-
-            // 2. Run prediction
-            const prediction = model.predict(xInput);
-            const predictionData = prediction.dataSync(); // [Probability Human, Probability AI]
-
-            const probHuman = predictionData[0];
-            const probAI = predictionData[1];
-
-            // Determine the classification
-            const isAI = probAI > probHuman;
-            const winningProb = Math.max(probAI, probHuman) * 100;
-            const predictedLabel = isAI ? 'AI-Generated' : 'Human-Written';
-            const color = isAI ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800';
-
-            // 3. Update UI
-            resultDiv.innerHTML = `
-                <div class="p-4 rounded-lg ${color} shadow-inner">
-                    <p class="text-xl font-bold mb-2">Prediction: ${predictedLabel}</p>
-                    <p class="text-lg">Confidence: <span class="font-extrabold">${winningProb.toFixed(2)}%</span></p>
-                    <div class="mt-4 text-left text-sm text-gray-700">
-                        <p>Human Probability (Label 0): ${probHuman.toFixed(4)}</p>
-                        <p>AI Probability (Label 1): ${probAI.toFixed(4)}</p>
-                    </div>
+            const matrixHtml = `
+                <div class="grid grid-cols-2 gap-2 text-center text-sm">
+                    <div class="p-2 border bg-gray-100 font-bold col-span-2">Predicted</div>
+                    <div class="p-2 border bg-gray-100">Negative (0)</div>
+                    <div class="p-2 border bg-gray-100">Positive (1)</div>
+                    
+                    <div class="p-2 border bg-gray-100 row-span-2 flex items-center justify-center font-bold">Actual</div>
+                    <div class="p-2 border">TN: ${TN}</div>
+                    <div class="p-2 border text-red-600">FP: ${FP}</div>
+                    
+                    <div class="p-2 border text-red-600">FN: ${FN}</div>
+                    <div class="p-2 border">TP: ${TP}</div>
                 </div>
             `;
+            document.getElementById('confusion-matrix').innerHTML = matrixHtml;
             
-            xInput.dispose();
-            prediction.dispose();
-            document.getElementById('predict-button').disabled = false;
+            // 2. Performance Metrics
+            const ACCURACY = (TP + TN) / (TP + TN + FP + FN) || 0;
+            const PRECISION = TP / (TP + FP) || 0;
+            const RECALL = TP / (TP + FN) || 0;
+            const F1 = 2 * (PRECISION * RECALL) / (PRECISION + RECALL) || 0;
+            
+            const metricsHtml = `
+                <p><strong>Accuracy:</strong> ${ACCURACY.toFixed(4)}</p>
+                <p><strong>Precision (AI):</strong> ${PRECISION.toFixed(4)}</p>
+                <p><strong>Recall (AI):</strong> ${RECALL.toFixed(4)}</p>
+                <p><strong>F1 Score:</strong> ${F1.toFixed(4)}</p>
+            `;
+            document.getElementById('performance-metrics').innerHTML = metricsHtml;
+
+            // Clean up Tensors
+            trueLabels.dispose();
+            predLabels.dispose();
+        });
+        
+        // Update Confusion Matrix Title
+        document.querySelector('#confusion-matrix').closest('.metric-card').querySelector('h3').innerText = `Confusion Matrix (Threshold: ${document.getElementById('threshold-value').innerText})`;
+    };
+    
+    // ==================================================================================
+    // Step 9: Export Results
+    // ==================================================================================
+    window.exportResults = async () => {
+        if (!predictions || !predictions.probAI) {
+            updateStatus('export-status', 'Run prediction first.', true);
+            return;
         }
+        enableButton('export-btn', false);
+        
+        document.getElementById('export-status').innerText = 'Generating predictions CSV...';
+        
+        await tf.nextFrame();
 
-        // Initialize the app on load
-        window.onload = () => {
-             logStatus("Application initialized. Ready to train model.");
-        }
+        tf.tidy(() => {
+            const probAIArray = predictions.probAI.dataSync();
+            const threshold = parseFloat(document.getElementById('threshold-slider').value);
 
-    </script>
+            let csv = "Text_Snippet,Prediction_Label (1=AI),Probability_AI\n";
+            
+            for (let i = 0; i < xTestRaw.length; i++) {
+                const textSnippet = String(xTestRaw[i]).substring(0, 50).replace(/,/g, ''); // Shorten and sanitize text
+                const predictionLabel = probAIArray[i] > threshold ? 1 : 0;
+                const prob = probAIArray[i].toFixed(4);
+                
+                csv += `"${textSnippet}",${predictionLabel},${prob}\n`;
+            }
 
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", "prediction_results.csv");
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            updateStatus('export-status', '✅ Export complete! Check your downloads folder.', false);
+        });
+
+        enableButton('export-btn', true);
+    };
+
+    // Ensure initial button states are correct on load
+    window.onload = () => {
+        // Initial setup for the threshold slider change event
+        document.getElementById('threshold-slider').addEventListener('input', calculateMetrics);
+        // Display initial value
+        document.getElementById('threshold-value').innerText = parseFloat(document.getElementById('threshold-slider').value).toFixed(2);
+    };
+
+</script>
 </body>
 </html>
